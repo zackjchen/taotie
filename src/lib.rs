@@ -1,15 +1,57 @@
 use std::{process::exit, thread};
 
+use backend::datafusion::DataFusionBackend;
 use clap::ArgMatches;
-use cli::ReplCommand;
+use cli::{
+    connect::ConnectOpts, describe::DescribeOpts, head::HeadOpts, list::ListOpts, sql::SqlOpts,
+    ExitOpts, ReplCommand,
+};
 use crossbeam_channel as mpsc;
+use enum_dispatch::enum_dispatch;
 use reedline_repl_rs::CallBackMap;
+use tokio::runtime::Runtime;
 
+pub mod backend;
 pub mod cli;
 
-pub struct ReplContext {
-    pub tx: mpsc::Sender<ReplCommand>,
+#[enum_dispatch]
+trait CmdExector {
+    async fn execute<T: Backend>(&self, backend: &mut T) -> anyhow::Result<String>;
 }
+trait ReplDisplay {
+    async fn display(&self) -> anyhow::Result<String>;
+}
+
+trait Backend {
+    type DataFrame: ReplDisplay;
+    async fn connect(&mut self, opts: &ConnectOpts) -> anyhow::Result<()>;
+    async fn list(&self) -> anyhow::Result<Self::DataFrame>;
+    async fn describe(&self, opts: &DescribeOpts) -> anyhow::Result<Self::DataFrame>;
+    async fn head(&self, opts: &HeadOpts) -> anyhow::Result<Self::DataFrame>;
+    async fn sql(&self, opts: &SqlOpts) -> anyhow::Result<Self::DataFrame>;
+}
+pub struct ReplContext {
+    pub tx: mpsc::Sender<ReplMsg>,
+}
+#[derive(Debug)]
+pub struct ReplMsg {
+    pub cmd: ReplCommand,
+    pub tx: mpsc::Sender<String>,
+}
+
+impl ReplMsg {
+    pub fn new(cmd: impl Into<ReplCommand>) -> (Self, mpsc::Receiver<String>) {
+        let (tx, rt) = mpsc::unbounded();
+        (
+            Self {
+                cmd: cmd.into(),
+                tx,
+            },
+            rt,
+        )
+    }
+}
+
 impl Default for ReplContext {
     fn default() -> Self {
         Self::new()
@@ -17,30 +59,21 @@ impl Default for ReplContext {
 }
 impl ReplContext {
     pub fn new() -> Self {
-        let (tx, rx) = mpsc::unbounded();
+        let mut backend = DataFusionBackend::new();
+        let rt = Runtime::new().expect("Failed to create tokio runtime");
+        let (tx, rx) = mpsc::unbounded::<ReplMsg>();
+
         thread::Builder::new()
             .name("ReplBackend".to_string())
             .spawn(move || {
-                while let Ok(cmd) = rx.recv() {
-                    match cmd {
-                        ReplCommand::Connect(opts) => {
-                            println!("Connect to dataset: {:?}", opts);
-                        }
-                        ReplCommand::List => {
-                            println!("List all datasets");
-                        }
-                        ReplCommand::Describe(opts) => {
-                            println!("Describe dataset: {:?}", opts);
-                        }
-                        ReplCommand::Head(opts) => {
-                            println!("Show head of dataset: {:?}", opts);
-                        }
-                        ReplCommand::Sql(opts) => {
-                            println!("Query dataset with sql: {:?}", opts);
-                        }
-                        ReplCommand::Exit => {
-                            break;
-                        }
+                while let Ok(msg) = rx.recv() {
+                    let cmd = msg.cmd;
+                    if let Err(e) = rt.block_on(async {
+                        let res = cmd.execute(&mut backend).await?;
+                        msg.tx.send(res).unwrap();
+                        Ok::<_, anyhow::Error>(())
+                    }) {
+                        eprintln!("Error: {}", e);
                     }
                 }
             })
@@ -48,10 +81,17 @@ impl ReplContext {
         ReplContext { tx }
     }
 
-    pub fn send(&self, cmd: ReplCommand) {
-        if let Err(e) = self.tx.send(cmd) {
-            eprintln!("Error: {}", e);
+    pub fn send(&self, msg: ReplMsg, tx: mpsc::Receiver<String>) -> Option<String> {
+        if let Err(e) = self.tx.send(msg) {
+            eprintln!("Repl Send Error: {}", e);
             std::process::exit(1);
+        }
+        match tx.recv() {
+            Ok(res) => Some(res),
+            Err(e) => {
+                eprintln!("Repl Recv Error: {}", e);
+                std::process::exit(1);
+            }
         }
     }
 }
@@ -68,7 +108,8 @@ pub fn get_callbacks() -> ReplCallBacks {
     callback
 }
 
-fn quit(_args: ArgMatches, ctx: &mut ReplContext) -> reedline_repl_rs::Result<Option<String>> {
-    ctx.send(ReplCommand::Exit);
+fn quit(_args: ArgMatches, _ctx: &mut ReplContext) -> reedline_repl_rs::Result<Option<String>> {
+    // let (msg, tx) = ReplMsg::new(ExitOpts);
+    // ctx.send(msg, tx);
     exit(0);
 }

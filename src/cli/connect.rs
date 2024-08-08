@@ -1,5 +1,4 @@
-use super::ReplCommand;
-use crate::ReplContext;
+use crate::{CmdExector, ReplContext, ReplMsg};
 use clap::{ArgMatches, Parser};
 use reedline_repl_rs::Result;
 
@@ -9,7 +8,6 @@ pub enum DatabaseConn {
     Csv(String),
     Parquet(String),
     Json(String),
-    Quit,
 }
 
 #[derive(Debug, Parser)]
@@ -23,6 +21,14 @@ pub struct ConnectOpts {
     pub name: String,
 }
 
+impl CmdExector for ConnectOpts {
+    async fn execute<T: crate::Backend>(&self, backend: &mut T) -> anyhow::Result<String> {
+        backend.connect(self).await?;
+        // println!("connect success");
+        Ok("connect success".into())
+    }
+}
+
 pub fn connect(args: ArgMatches, context: &mut ReplContext) -> Result<Option<String>> {
     let conn = args
         .get_one::<DatabaseConn>("conn")
@@ -34,15 +40,10 @@ pub fn connect(args: ArgMatches, context: &mut ReplContext) -> Result<Option<Str
         .expect("expect conn_str")
         .to_owned();
 
-    let cmd: ReplCommand = ConnectOpts::new(conn, table, name).into();
-    context.send(cmd);
-    Ok(None)
-}
-
-impl From<ConnectOpts> for ReplCommand {
-    fn from(opts: ConnectOpts) -> Self {
-        ReplCommand::Connect(opts)
-    }
+    let cmd = ConnectOpts::new(conn, table, name);
+    let (msg, tx) = ReplMsg::new(cmd);
+    let res = context.send(msg, tx);
+    Ok(res)
 }
 
 impl ConnectOpts {
