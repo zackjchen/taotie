@@ -1,6 +1,6 @@
 use std::{process::exit, thread};
 
-use backend::datafusion::DataFusionBackend;
+use backend::fusion::DataFusionBackend;
 use clap::ArgMatches;
 use cli::{
     connect::ConnectOpts, describe::DescribeOpts, head::HeadOpts, list::ListOpts,
@@ -92,10 +92,10 @@ impl ReplContext {
         }
         match tx.recv() {
             Ok(res) => Some(res),
-            Err(e) => {
+            Err(_) => {
                 // println!("Repl Recv Error: {}", e);
                 // std::process::exit(1);
-                Some(e.to_string())
+                Some("".to_string())
             }
         }
     }

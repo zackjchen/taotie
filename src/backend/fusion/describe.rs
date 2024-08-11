@@ -1,3 +1,5 @@
+//! 这个是仿照datafusion的dataframe的describe方法实现的，用于展示dataframe的统计信息
+
 use std::sync::Arc;
 
 use arrow::{

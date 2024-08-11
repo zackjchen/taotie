@@ -1,9 +1,13 @@
+pub mod describe;
+pub mod describe2;
+
 use std::ops::Deref;
 
 use arrow::{array::RecordBatch, util::pretty::pretty_format_batches};
 use datafusion::prelude::{
     CsvReadOptions, DataFrame, NdJsonReadOptions, SessionConfig, SessionContext,
 };
+use describe2::DataFrameDescriber;
 
 use crate::{
     cli::{
@@ -15,8 +19,6 @@ use crate::{
     },
     Backend, ReplDisplay,
 };
-
-use super::describe::DescribeDataFrame;
 
 pub struct DataFusionBackend(SessionContext);
 
@@ -90,11 +92,17 @@ impl Backend for DataFusionBackend {
 
     async fn describe(&self, opts: &DescribeOpts) -> anyhow::Result<impl ReplDisplay> {
         let df = self.0.sql(&format!("select * from {}", opts.name)).await?;
+        // datafusion使用的
         // let df = df.describe().await?;
-        let df1 = DescribeDataFrame::new(df.clone());
-        let batchs = df1.to_record_batch().await.unwrap();
+        // 我们抄的datafusion的
+        // let df1 = DescribeDataFrame::new(df.clone());
+        // let batchs = df1.to_record_batch().await.unwrap();
         // print!("{}",pretty_format_batches(&[batchs])?);
-        Ok(batchs)
+        let df_describer = DataFrameDescriber::try_new(df)?;
+        let df = df_describer.describe().await.unwrap();
+        let df = df_describer.cast_back(df);
+        // df.display().await?;
+        Ok(df)
     }
     async fn schema(&self, opts: &SchemaOpts) -> anyhow::Result<impl ReplDisplay> {
         let df = self.0.sql(&format!("DESCRIBE {}", opts.name)).await?;
