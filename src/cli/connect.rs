@@ -59,7 +59,7 @@ fn verify_conn_str(s: &str) -> std::result::Result<DatabaseConn, String> {
         Ok(DatabaseConn::Csv(s.to_string()))
     } else if s.ends_with(".parquet") {
         Ok(DatabaseConn::Parquet(s.to_string()))
-    } else if s.ends_with(".json") {
+    } else if s.ends_with(".ndjson") {
         Ok(DatabaseConn::Json(s.to_string()))
     } else {
         Err("Invalid connection string".to_string())

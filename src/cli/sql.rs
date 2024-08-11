@@ -4,7 +4,7 @@ use reedline_repl_rs::Result;
 
 #[derive(Debug, Parser)]
 pub struct SqlOpts {
-    #[arg(short, long, help = "SQL query")]
+    #[arg(help = "SQL query")]
     pub query: String,
 }
 

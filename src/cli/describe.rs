@@ -15,7 +15,7 @@ pub fn describe(args: ArgMatches, context: &mut ReplContext) -> Result<Option<St
 
 #[derive(Debug, Parser)]
 pub struct DescribeOpts {
-    #[arg(short, long, help = "Name of the dataset")]
+    #[arg(help = "Name of the dataset")]
     pub name: String,
 }
 

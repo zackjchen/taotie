@@ -3,8 +3,8 @@ use std::{process::exit, thread};
 use backend::datafusion::DataFusionBackend;
 use clap::ArgMatches;
 use cli::{
-    connect::ConnectOpts, describe::DescribeOpts, head::HeadOpts, list::ListOpts, sql::SqlOpts,
-    ExitOpts, ReplCommand,
+    connect::ConnectOpts, describe::DescribeOpts, head::HeadOpts, list::ListOpts,
+    schema::SchemaOpts, sql::SqlOpts, ExitOpts, ReplCommand,
 };
 use crossbeam_channel as mpsc;
 use enum_dispatch::enum_dispatch;
@@ -23,12 +23,13 @@ trait ReplDisplay {
 }
 
 trait Backend {
-    type DataFrame: ReplDisplay;
+    // type DataFrame: ReplDisplay;
     async fn connect(&mut self, opts: &ConnectOpts) -> anyhow::Result<()>;
-    async fn list(&self) -> anyhow::Result<Self::DataFrame>;
-    async fn describe(&self, opts: &DescribeOpts) -> anyhow::Result<Self::DataFrame>;
-    async fn head(&self, opts: &HeadOpts) -> anyhow::Result<Self::DataFrame>;
-    async fn sql(&self, opts: &SqlOpts) -> anyhow::Result<Self::DataFrame>;
+    async fn list(&self) -> anyhow::Result<impl ReplDisplay>;
+    async fn describe(&self, opts: &DescribeOpts) -> anyhow::Result<impl ReplDisplay>;
+    async fn schema(&self, opts: &SchemaOpts) -> anyhow::Result<impl ReplDisplay>;
+    async fn head(&self, opts: &HeadOpts) -> anyhow::Result<impl ReplDisplay>;
+    async fn sql(&self, opts: &SqlOpts) -> anyhow::Result<impl ReplDisplay>;
 }
 pub struct ReplContext {
     pub tx: mpsc::Sender<ReplMsg>,
@@ -68,12 +69,15 @@ impl ReplContext {
             .spawn(move || {
                 while let Ok(msg) = rx.recv() {
                     let cmd = msg.cmd;
+                    if let ReplCommand::Exit(_) = cmd {
+                        exit(0);
+                    }
                     if let Err(e) = rt.block_on(async {
                         let res = cmd.execute(&mut backend).await?;
                         msg.tx.send(res).unwrap();
                         Ok::<_, anyhow::Error>(())
                     }) {
-                        eprintln!("Error: {}", e);
+                        println!("Error: {}", e);
                     }
                 }
             })
@@ -89,8 +93,9 @@ impl ReplContext {
         match tx.recv() {
             Ok(res) => Some(res),
             Err(e) => {
-                eprintln!("Repl Recv Error: {}", e);
-                std::process::exit(1);
+                // println!("Repl Recv Error: {}", e);
+                // std::process::exit(1);
+                Some(e.to_string())
             }
         }
     }
@@ -102,14 +107,15 @@ pub fn get_callbacks() -> ReplCallBacks {
     callback.insert("connect".to_string(), cli::connect::connect);
     callback.insert("list".to_string(), cli::list::list);
     callback.insert("head".to_string(), cli::head::head);
-    callback.insert("describle".to_string(), cli::describe::describe);
+    callback.insert("schema".to_string(), cli::schema::schema);
+    callback.insert("describe".to_string(), cli::describe::describe);
     callback.insert("sql".to_string(), cli::sql::sql);
     callback.insert("exit".to_string(), quit);
     callback
 }
 
-fn quit(_args: ArgMatches, _ctx: &mut ReplContext) -> reedline_repl_rs::Result<Option<String>> {
-    // let (msg, tx) = ReplMsg::new(ExitOpts);
-    // ctx.send(msg, tx);
+fn quit(_args: ArgMatches, ctx: &mut ReplContext) -> reedline_repl_rs::Result<Option<String>> {
+    let (msg, tx) = ReplMsg::new(ExitOpts);
+    ctx.send(msg, tx);
     exit(0);
 }

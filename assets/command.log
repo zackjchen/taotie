@@ -1,0 +1,4 @@
+connect "assets/sample.parquet" -n test1
+connect "assets/users.ndjson" -n test2
+describe test1
+describe test2

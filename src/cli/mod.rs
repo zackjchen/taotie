@@ -8,9 +8,11 @@ pub mod connect;
 pub mod describe;
 pub mod head;
 pub mod list;
+pub mod schema;
 pub mod sql;
 use connect::ConnectOpts;
 use list::ListOpts;
+use schema::SchemaOpts;
 use sql::SqlOpts;
 
 use crate::{Backend, CmdExector};
@@ -25,7 +27,9 @@ pub enum ReplCommand {
     Connect(ConnectOpts),
     #[command(name = "list", about = "List all registered datasets")]
     List(ListOpts),
-    #[command(name = "describle", about = "describe a dataset")]
+    #[command(name = "schema", about = "describe a dataset schema")]
+    Schema(SchemaOpts),
+    #[command(name = "describe", about = "show the first n rows of a dataset")]
     Describe(DescribeOpts),
     #[command(name = "head", about = "show the first n rows of a dataset")]
     Head(HeadOpts),

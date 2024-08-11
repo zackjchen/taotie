@@ -1,4 +1,6 @@
 [default.extend-words]
+Nd = "Nd"
+datas = "datas"
 
 [files]
 extend-exclude = ["CHANGELOG.md", "notebooks/*"]
